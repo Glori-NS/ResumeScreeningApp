@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Screening Results</title>
+    <!-- Plotly.js CDN for interactive charts -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            max-width: 800px;
+            margin: auto;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        p {
+            color: #666;
+        }
+        .chart-container {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Analysis Summary</h1>
+        <p><strong>Job Description Provided:</strong> {{ job_description }}</p>
+        <p><strong>Word Count in Resume:</strong> {{ word_count }}</p>
+        <p><strong>Skills Matching Job Description:</strong> {{ skills_matched }}</p>
+        <p><strong>Experiences Matching Job Description:</strong> {{ experiences_matched }}</p>
+        <p><strong>Overall Matching Score:</strong> {{ match_score }}</p>
+        
+        <div class="chart-container">
+            {{ match_chart|safe }}
+        </div>
+
+        <a href="/">Try with another resume</a>
+    </div>
+</body>
+</html>
