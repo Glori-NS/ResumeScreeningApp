@@ -1,17 +1,20 @@
 from flask import Flask, request, render_template
 import os
-import RAKE
 import plotly.express as px
 import pandas as pd
 import re
 import spacy
-import fitz
-import textract
+import fitz  # PyMuPDF for PDF files
 from docx import Document
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from rake_nltk import Rake
+import openai
 
 app = Flask(__name__)
+
+# Set OpenAI API Key
+openai.api_key = os.getenv('OPENAI_API_KEY', 'sk-proj-Ym7Quz4RnaRTBkij6WdsT3BlbkFJNq1NvAMkBqfFIH2JSNDP')
 
 # Load Spacy model for Named Entity Recognition
 nlp = spacy.load('en_core_web_sm')
@@ -22,84 +25,99 @@ custom_stoplist = [
     'for', 'on', 'at', 'by', 'from', 'up', 'down', 'over', 'under', 'again',
 ]
 
-rake = RAKE.Rake(custom_stoplist)
+rake = Rake(stopwords=custom_stoplist)
 
 # Comprehensive skill list (expanded to fit most industries)
 common_skills = [
-    # General Skills
-    'communication', 'teamwork', 'leadership', 'problem-solving', 'time management', 'critical thinking',
-    'creativity', 'adaptability', 'work ethic', 'interpersonal skills', 'organization', 'attention to detail',
-    'customer service', 'project management', 'strategic planning', 'conflict resolution', 'decision making',
-    'multitasking', 'presentation skills', 'negotiation', 'public speaking', 'analytical skills', 'research',
-
-    # Technical Skills
-    'python', 'java', 'c++', 'javascript', 'html', 'css', 'sql', 'r', 'matlab', 'machine learning',
-    'data analysis', 'data science', 'big data', 'software development', 'web development', 'networking',
-    'cloud computing', 'cybersecurity', 'technical support', 'linux', 'windows', 'macos', 'docker', 'kubernetes',
-    'aws', 'azure', 'gcp', 'devops', 'ci/cd', 'microservices', 'api development', 'blockchain', 'artificial intelligence',
-    'robotics', 'iot', 'mobile development', 'ux/ui design', 'system administration', 'virtualization', 'sql server',
-    'nosql', 'tensorflow', 'pytorch', 'hadoop', 'spark', 'etl', 'sas', 'stata', 'tableau', 'power bi', 'excel',
-
-    # Healthcare Skills
-    'patient care', 'clinical research', 'medical terminology', 'emr', 'ehr', 'phlebotomy', 'first aid', 'cpr', 'surgical technology',
-    'nursing', 'medication administration', 'public health', 'healthcare management', 'disease prevention', 'telemedicine',
-    'diagnostic testing', 'radiology', 'medical coding', 'medical billing', 'nutrition', 'physical therapy', 'occupational therapy',
-    'pharmacy', 'mental health', 'patient advocacy',
-
-    # Finance Skills
-    'accounting', 'financial analysis', 'budgeting', 'forecasting', 'investment', 'risk management', 'auditing', 'taxation',
-    'financial modeling', 'payroll', 'banking', 'insurance', 'financial planning', 'compliance', 'treasury', 'credit analysis',
-    'asset management', 'cost accounting', 'mergers and acquisitions', 'portfolio management', 'securities', 'wealth management',
-
-    # Marketing Skills
-    'digital marketing', 'seo', 'sem', 'content marketing', 'social media marketing', 'email marketing', 'advertising', 'branding',
-    'market research', 'copywriting', 'crm', 'marketing automation', 'ppc', 'affiliate marketing', 'event planning', 'public relations',
-    'graphic design', 'video production', 'photography', 'web analytics', 'google analytics', 'adobe creative suite', 'salesforce',
-
-    # Education Skills
-    'curriculum development', 'lesson planning', 'classroom management', 'educational technology', 'special education', 'teaching',
-    'e-learning', 'assessment', 'instructional design', 'training and development', 'student counseling', 'academic advising',
-    'tutoring', 'early childhood education', 'adult education', 'lms', 'school administration', 'educational research',
-
-    # Engineering Skills
-    'mechanical engineering', 'electrical engineering', 'civil engineering', 'structural engineering', 'chemical engineering',
-    'environmental engineering', 'biomedical engineering', 'aerospace engineering', 'manufacturing', 'quality control', 'cad',
-    'cam', 'solidworks', 'autocad', 'engineering design', 'sustainability', 'project engineering', 'systems engineering',
-    'product development', 'testing', 'technical writing', 'lean manufacturing', 'six sigma', 'automation', 'robotics',
-
-    # Legal Skills
-    'legal research', 'litigation', 'contract law', 'intellectual property', 'corporate law', 'compliance', 'legal writing', 'mediation',
-    'arbitration', 'legal documentation', 'case management', 'court procedures', 'family law', 'criminal law', 'employment law',
-    'real estate law', 'tax law', 'immigration law', 'legal compliance', 'due diligence', 'regulatory affairs',
-
-    # Sales Skills
-    'sales strategy', 'lead generation', 'account management', 'customer relationship management', 'negotiation skills', 'b2b sales',
-    'b2c sales', 'salesforce', 'sales presentations', 'closing techniques', 'prospecting', 'sales forecasting', 'retail sales',
-    'direct sales', 'telemarketing', 'territory management', 'business development', 'cold calling', 'upselling', 'cross-selling',
-
-    # Human Resources Skills
-    'recruitment', 'employee relations', 'hr management', 'performance management', 'training and development', 'compensation and benefits',
-    'payroll management', 'hr policies', 'talent acquisition', 'employee engagement', 'labor law', 'organizational development',
-    'succession planning', 'hr analytics', 'diversity and inclusion', 'hr software', 'conflict resolution', 'benefits administration',
-
-    # Operations Skills
-    'supply chain management', 'logistics', 'inventory management', 'operations management', 'procurement', 'vendor management',
-    'production planning', 'lean manufacturing', 'six sigma', 'quality assurance', 'warehouse management', 'fleet management',
-    'materials management', 'logistics management', 'production management', 'transportation management', 'workflow optimization',
-
-    # Creative Skills
-    'graphic design', 'video editing', 'animation', 'photography', 'illustration', 'creative direction', '3d modeling', 'adobe photoshop',
-    'adobe illustrator', 'adobe premiere pro', 'adobe after effects', 'final cut pro', 'design thinking', 'creative writing', 'storytelling',
-    'branding', 'visual design', 'user experience', 'user interface', 'art direction', 'music production', 'sound design', 'copywriting'
+    # Technical skills
+    'python', 'java', 'c++', 'javascript', 'html', 'css', 'sql', 'ruby', 'php',
+    'swift', 'kotlin', 'typescript', 'bash', 'shell scripting', 'docker',
+    'kubernetes', 'aws', 'azure', 'gcp', 'linux', 'windows', 'macos', 'git',
+    'machine learning', 'deep learning', 'data science', 'big data', 'hadoop',
+    'spark', 'tensorflow', 'pytorch', 'scikit-learn', 'nlp', 'computer vision',
+    'blockchain', 'cybersecurity', 'networking', 'database management', 'oracle',
+    'mysql', 'postgresql', 'mongodb', 'sqlite', 'firebase', 'rest api', 'graphql',
+    'agile', 'scrum', 'devops', 'ci/cd', 'unit testing', 'integration testing',
+    'qa', 'automation', 'selenium', 'jmeter', 'cloud computing', 'virtualization',
+    'microservices', 'react', 'angular', 'vue', 'node.js', 'express', 'django',
+    'flask', 'laravel', 'spring', 'hibernate', 'dotnet', 'unity', 'unreal engine',
+    
+    # Soft skills
+    'communication', 'teamwork', 'leadership', 'problem-solving', 'critical thinking',
+    'time management', 'adaptability', 'creativity', 'work ethic', 'attention to detail',
+    'organization', 'interpersonal skills', 'emotional intelligence', 'negotiation',
+    'conflict resolution', 'project management', 'presentation', 'public speaking',
+    'customer service', 'sales', 'marketing', 'strategic planning', 'decision making',
+    'analytical skills', 'research', 'writing', 'editing', 'proofreading',
+    
+    # Business skills
+    'accounting', 'finance', 'budgeting', 'forecasting', 'financial analysis',
+    'business analysis', 'business development', 'product management', 'supply chain',
+    'logistics', 'procurement', 'contract management', 'human resources', 'recruitment',
+    'talent management', 'performance management', 'training and development',
+    'compliance', 'risk management', 'quality assurance', 'lean manufacturing',
+    'six sigma', 'process improvement', 'operations management', 'change management',
+    
+    # Design skills
+    'graphic design', 'ui/ux design', 'adobe photoshop', 'adobe illustrator',
+    'adobe xd', 'sketch', 'figma', 'invision', 'web design', 'responsive design',
+    'prototyping', 'wireframing', 'branding', 'typography', 'video editing',
+    'motion graphics', 'animation', '3d modeling', 'autocad', 'blender', 'maya',
+    
+    # Industry-specific skills
+    'healthcare', 'nursing', 'patient care', 'clinical research', 'pharmaceuticals',
+    'biotechnology', 'chemical engineering', 'mechanical engineering', 'electrical engineering',
+    'civil engineering', 'construction management', 'architecture', 'urban planning',
+    'education', 'teaching', 'curriculum development', 'e-learning', 'instructional design',
+    'legal', 'litigation', 'contract law', 'intellectual property', 'real estate',
+    'property management', 'hospitality', 'event planning', 'food and beverage',
+    'culinary arts', 'tourism', 'travel planning', 'automotive', 'manufacturing',
+    'production management', 'quality control', 'maintenance', 'repair',
+    
+    # Other skills
+    'foreign languages', 'translation', 'interpretation', 'writing', 'editing',
+    'publishing', 'social media', 'content creation', 'influencer marketing',
+    'seo', 'sem', 'ppc', 'email marketing', 'market research', 'data analysis',
+    'statistics', 'survey design', 'customer relationship management (crm)',
+    'salesforce', 'sap', 'erp', 'microsoft office', 'excel', 'powerpoint', 'word'
 ]
+
+# Function to extract text from PDF
+def extract_text_from_pdf(file):
+    document = fitz.open(stream=file, filetype="pdf")
+    text = ""
+    for page_num in range(len(document)):
+        page = document.load_page(page_num)
+        text += page.get_text()
+    return text
+
+# Function to extract text from DOCX
+def extract_text_from_docx(file):
+    document = Document(file)
+    text = "\n".join([paragraph.text for paragraph in document.paragraphs])
+    return text
+
+# Function to remove personal information
+def clean_resume_text(text):
+    lines = text.split('\n')
+    cleaned_lines = []
+    for line in lines:
+        # Skip the first few lines that might contain personal information
+        if len(cleaned_lines) > 5:
+            cleaned_lines.append(line)
+        else:
+            if not re.match(r"^\s*\d+\s*$", line):  # skip lines with numbers only
+                cleaned_lines.append(line)
+    return "\n".join(cleaned_lines)
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
 def extract_keywords_with_rake(text):
-    keywords = rake.run(text)
-    return [k[0].lower() for k in keywords]
+    rake.extract_keywords_from_text(text)
+    keywords = rake.get_ranked_phrases()
+    return [k.lower() for k in keywords]
 
 def extract_skills(text):
     doc = nlp(text)
@@ -142,8 +160,31 @@ def generate_match_chart(match_score):
     fig.update_layout(showlegend=True)
     return fig.to_html(full_html=False)
 
+def summarize_text(text):
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"Summarize the Job Description and identify key requirements and preferred qualifications. :\n\n{text}"}
+        ]
+    )
+    summary = response.choices[0].message["content"].strip()
+    return summary
+
+def generate_analysis(resume_text, job_description):
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"Analyze the following resume in relation to the job description and provide a brief analysis. Ensure the analysis is free of bias and focuses solely on the skills, experiences, and qualifications relevant to the job description. Do not include or consider the applicant's name or any other personal identifiers:\n\nResume:\n{resume_text}\n\nJob Description:\n{job_description}"}
+        ]
+    )
+    analysis = response.choices[0].message["content"].strip()
+    return analysis
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    job_title = request.form.get('job_title')
     job_description = request.form.get('job_description')
     resume_file = request.files.get('resume')
 
@@ -159,7 +200,15 @@ def upload_file():
     if len(resume_content) > 1024 * 1024 * 5:  # 5 MB limit for example
         return 'File too large', 400
 
-    resume_text = resume_content.decode('utf-8', errors='ignore')
+    if resume_file.filename.endswith('.pdf'):
+        resume_text = extract_text_from_pdf(resume_content)
+    elif resume_file.filename.endswith('.docx'):
+        resume_text = extract_text_from_docx(resume_content)
+    else:
+        resume_text = resume_content.decode('utf-8', errors='ignore')
+
+    # Clean resume text to remove personal information
+    resume_text = clean_resume_text(resume_text)
 
     resume_keywords = extract_keywords_with_rake(resume_text)
     job_description_keywords = extract_keywords_with_rake(job_description)
@@ -178,14 +227,22 @@ def upload_file():
 
     match_chart = generate_match_chart(final_match_score)
 
+    # Summarize the job description
+    summarized_job_description = summarize_text(job_description)
+
+    # Generate analysis
+    analysis = generate_analysis(resume_text, summarized_job_description)
+
     return render_template(
         'analysis.html',
-        job_description=job_description,
+        job_title=job_title,
+        job_description=summarized_job_description,
         word_count=len(resume_text.split()),
         skills_matched=", ".join(resume_skills),
         experiences_matched=", ".join(resume_experiences),
         match_score="{:.2f}%".format(final_match_score),
-        match_chart=match_chart
+        match_chart=match_chart,
+        analysis=analysis
     )
 
 if __name__ == '__main__':
